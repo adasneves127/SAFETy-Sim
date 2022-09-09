@@ -1,0 +1,3 @@
+/Users/adasneves/Desktop/src/Simulator/cmake-build-debug/CMakeFiles/Simulator.dir
+/Users/adasneves/Desktop/src/Simulator/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/adasneves/Desktop/src/Simulator/cmake-build-debug/CMakeFiles/rebuild_cache.dir
