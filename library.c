@@ -66,7 +66,8 @@ struct Memory{
 
 #pragma region Global Variables
 
-unsigned char* memory[0xFF][0xFF][0xFFFF];
+
+struct Memory memory;
 unsigned short PC = 0x0000;
 
 struct Registers registers;
@@ -77,6 +78,8 @@ unsigned char mpL = 0x00;
 unsigned char mpH = 0x00;
 
 bool debug = false;
+bool halted = false;
+bool brk = false;
 
 
 #pragma endregion
@@ -84,14 +87,23 @@ bool debug = false;
 #pragma region Function Prototypes
 int main(int argc, char *argv[]);
 void readFile(char *argv[]);
-void doInstruction();
+int doInstruction();
 void readMemIncPC();
-unsigned char ReadNext();
+unsigned char* ReadNext();
 void push(unsigned char* val);
 void pop(unsigned char* val);
 void top(unsigned char* val);
 unsigned char Read(unsigned short addr);
 void write(unsigned char* low, unsigned char* high, unsigned char* val);
+void add(unsigned char* r1, unsigned char* r2);
+void sub(unsigned char* r1, unsigned char* r2);
+void cmp(unsigned char* r1, unsigned char* r2);
+void nand(unsigned char* r1, unsigned char* r2);
+void inc(unsigned char* r1);
+void dec(unsigned char* r1);
+void ROR(unsigned char* val);
+void ROL(unsigned char* val);
+void printDebug();
 #pragma endregion
 
 #pragma region Main Function
@@ -113,39 +125,46 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    /*while(!halted && (reg->PC.get() <= 65535)) {
-        doInstruction();
+    while(!halted && (PC <= 65535)) {
+        int res = doInstruction();
         if (debug) {
             printDebug();
         }
-    }*/
+        if(res == -1){
+            printf("Program encountered an error!");
+            return 0;
+        }
+    }
 
 }
+
+void printDebug(){
+
+}
+
 #pragma endregion
 
 
 void readFile(char *argv[]){
     FILE* f=fopen(argv[1],"r");
 
-    int i=0;
+    int i;
     //Fill memory with 0x00 (NOP)
     for(i=0; i<0xFFFF; i++)
     {
-        memory[mpH][mpL][i] = 0x00;
+        (*memory.RAM)[i] = 0x00;
     }
     i=0x8000;
 
-    unsigned char memLow, memHigh;
 
-    memLow = memHigh = 0;
 
     //Read file into memory
-    for(memHigh = 0; memHigh < 0xFF; memHigh++){
-        for(memLow = 0; memLow < 0xFF; memLow++){
-            for(i = 0; i < 0xFFFF; i++){
+    for(unsigned char memHigh = 0; memHigh < 0xFF; memHigh++){
+        for(unsigned char memLow = 0; memLow < 0xFF; memLow++){
+            for(i = 8000; i < 0xFFFF; i++){
                 int c;
                 fscanf(f,"%x\n",&c);
-                *memory[memHigh][memLow][i] = c;
+                (*memory.ROM)[memHigh][memLow][i] = c;
             }
         }
     }
@@ -153,7 +172,7 @@ void readFile(char *argv[]){
     fclose(f);
 }
 
-void doInstruction(){
+int doInstruction(){
     //Fetch
     readMemIncPC();
 
@@ -200,82 +219,82 @@ void doInstruction(){
             break;
         case 0x11:
             //ROR A
-            (*REGA) = (*REGA) << 1 | (*REGA) >> 7;
+            ROR(REGA);
             break;
         case 0x12:
             //ADD A IMM
-            (*REGA) = (*REGA) + ReadNext();
+            add(REGA, ReadNext());
             break;
         case 0x13:
             //SUB A IMM
-            (*REGA) = (*REGA) - ReadNext();
+            sub(REGA, ReadNext());
             break;
         case 0x14:
             //ROL B
-            (*REGB) = (*REGB) << 1 | (*REGB) >> 7;
+            ROL(REGB);
             break;
         case 0x15:
             //ROR B
-            (*REGB) = (*REGB) >> 1 | (*REGB) << 7;
+            ROR(REGB);
             break;
         case 0x16:
             //ADD B IMM
-            (*REGB) = (*REGB) + ReadNext();
+            add(REGB, ReadNext());
             break;
         case 0x17:
             //SUB B IMM
-            (*REGB) = (*REGB) - ReadNext();
+            sub(REGB, ReadNext());
             break;
         case 0x18:
             //ROL X
-            (*REGX) = (*REGX) << 1 | (*REGX) >> 7;
+            ROL(REGX);
             break;
         case 0x19:
             //ROR X
-            (*REGX) = (*REGX) >> 1 | (*REGX) << 7;
+            ROR(REGX);
             break;
         case 0x1A:
             //ADD X IMM
-            (*REGX) = (*REGX) + ReadNext();
+            add(REGX, ReadNext());
             break;
         case 0x1B:
-            (*REGX) = (*REGX) - ReadNext();
+            sub(REGX, ReadNext());
             break;
         case 0x1C:
-            (*REGY) = (*REGY) << 1 | (*REGY) >> 7;
+            ROL(REGY);
             break;
         case 0x1D:
-            (*REGY) = (*REGY) >> 1 | (*REGY) << 7;
+            ROR(REGY);
             break;
         case 0x1E:
-            (*REGY) = (*REGY) + ReadNext();
+            sub(REGY, ReadNext());
             break;
         case 0x1F:
-            (*REGY) = (*REGY) - ReadNext();
+            sub(REGY, ReadNext());
             break;
         case 0x20:
-            (*REGA)++;
+            inc(REGA);;
             break;
         case 0x21:
-            (*REGA)--;
+            dec(REGA);;
             break;
         case 0x24:
-            (*REGB)++;
+            inc(REGB);;
             break;
         case 0x25:
-            (*REGB)--;
+            dec(REGB);;
             break;
         case 0x28:
-            (*REGX)++;
+            inc(REGX);;
             break;
         case 0x29:
-            (*REGX)--;
+            dec(REGX);;
             break;
         case 0x2C:
-            (*REGY)++;
+            inc(REGY);;
             break;
         case 0x2D:
-            (*REGY)--;
+            dec(REGY);;
             break;
         case 0x30:
             pop(REGA);
@@ -365,100 +384,100 @@ void doInstruction(){
             //BEQ
             break;
         case 0x80:
-            (*REGA) = (*REGA) + (*REGA);
+            add(REGA, REGA);
             break;
         case 0x81:
-            (*REGA) = (*REGA) + (*REGB);
+            add(REGA, REGB);
             break;
         case 0x82:
-            (*REGA) = (*REGA) + (*REGX);
+            add(REGA, REGX);
             break;
         case 0x83:
-            (*REGA) = (*REGA) + (*REGY);
+            add(REGA, REGY);
             break;
         case 0x84:
-            (*REGB) = (*REGB) + (*REGA);
+            add(REGB, REGA);
             break;
         case 0x85:
-            (*REGB) = (*REGB) + (*REGB);
+            add(REGB, REGB);
             break;
         case 0x86:
-            (*REGB) = (*REGB) + (*REGX);
+            add(REGB, REGX);
             break;
         case 0x87:
-            (*REGB) = (*REGB) + (*REGY);
+            add(REGB, REGY);
             break;
         case 0x88:
-            (*REGX) = (*REGX) + (*REGA);
+            add(REGX, REGA);
             break;
         case 0x89:
-            (*REGX) = (*REGX) + (*REGB);
+            add(REGX, REGB);
             break;
         case 0x8A:
-            (*REGX) = (*REGX) + (*REGX);
+            add(REGX, REGX);
             break;
         case 0x8B:
-            (*REGX) = (*REGX) + (*REGY);
+            add(REGX, REGY);
             break;
         case 0x8C:
-            (*REGY) = (*REGY) + (*REGA);
+            add(REGY, REGA);
             break;
         case 0x8D:
-            (*REGY) = (*REGY) + (*REGB);
+            add(REGY, REGB);
             break;
         case 0x8E:
-            (*REGY) = (*REGY) + (*REGX);
+            add(REGY, REGX);
             break;
         case 0x8F:
-            (*REGY) = (*REGY) + (*REGY);
+            add(REGY, REGY);
             break;
         case 0x90:
-            (*REGA) = (*REGA) - (*REGA);
+            sub(REGA, REGA);
             break;
         case 0x91:
-            (*REGA) = (*REGA) - (*REGB);
+            sub(REGA, REGB);
             break;
         case 0x92:
-            (*REGA) = (*REGA) - (*REGX);
+            sub(REGA, REGX);
             break;
         case 0x93:
-            (*REGA) = (*REGA) - (*REGY);
+            sub(REGA, REGY);
             break;
         case 0x94:
-            (*REGB) = (*REGB) - (*REGA);
+            sub(REGB, REGA);
             break;
         case 0x95:
-            (*REGB) = (*REGB) - (*REGB);
+            sub(REGB, REGB);
             break;
         case 0x96:
-            (*REGB) = (*REGB) - (*REGX);
+            sub(REGB, REGX);
             break;
         case 0x97:
-            (*REGB) = (*REGB) - (*REGY);
+            sub(REGB, REGY);
             break;
         case 0x98:
-            (*REGX) = (*REGX) - (*REGA);
+            sub(REGX, REGA);
             break;
         case 0x99:
-            (*REGX) = (*REGX) - (*REGB);
+            sub(REGX, REGB);
             break;
         case 0x9A:
-            (*REGX) = (*REGX) - (*REGX);
+            sub(REGX, REGX);
             break;
         case 0x9B:
-            (*REGX) = (*REGX) - (*REGY);
+            sub(REGX, REGY);
             break;
         case 0x9C:
-            (*REGY) = (*REGY) - (*REGA);
+            sub(REGY, REGA);
             break;
         case 0x9D:
-            (*REGY) = (*REGY) - (*REGB);
+            sub(REGY, REGB);
             break;
         case 0x9E:
-            (*REGY) = (*REGY) - (*REGX);
+            sub(REGY, REGX);
             break;
         case 0x9F:
-            (*REGY) = (*REGY) - (*REGY);
+            sub(REGY, REGY);
             break;
         case 0xB0:
             push(REGA);
@@ -484,6 +503,94 @@ void doInstruction(){
         case 0xC3:
             write(REGY, ReadNext(), ReadNext());
             break;
+        case 0xA0:
+            nand(REGA, REGA);
+            break;
+        case 0xA1:
+            nand(REGA, REGB);
+            break;
+        case 0xA2:
+            nand(REGA, REGX);
+            break;
+        case 0xA3:
+            nand(REGA, REGY);
+            break;
+        case 0xA4:
+            nand(REGB, REGA);
+            break;
+        case 0xA5:
+            nand(REGB, REGB);
+            break;
+        case 0xA6:
+            nand(REGB, REGX);
+            break;
+        case 0xA7:
+            nand(REGB, REGY);
+            break;
+        case 0xA8:
+            nand(REGX, REGA);
+            break;
+        case 0xA9:
+            nand(REGX, REGB);
+            break;
+        case 0xAA:
+            nand(REGX, REGX);
+            break;
+        case 0xAB:
+            nand(REGX, REGY);
+            break;
+        case 0xAC:
+            nand(REGY, REGA);
+            break;
+        case 0xAD:
+            nand(REGY, REGB);
+            break;
+        case 0xAE:
+            nand(REGY, REGX);
+            break;
+        case 0xAF:
+            nand(REGY, REGY);
+            break;
+        case 0xB0:
+            push(REGA);
+            break;
+        case 0xB1:
+            push(REGB);
+            break;
+        case 0xB2:
+            push(REGX);
+            break;
+        case 0xB3:
+            push(REGY);
+            break;
+        case 0xC0:
+            write(REGA, ReadNext(), ReadNext());
+            break;
+        case 0xC1:
+            write(REGB, ReadNext(), ReadNext());
+            break;
+        case 0xC2:
+            write(REGX, ReadNext(), ReadNext());
+            break;
+        case 0xC3:
+            write(REGY, ReadNext(), ReadNext());
+            break;
+        case 0xE0:
+            cmp(REGA, ReadNext());
+            break;
+        case 0xE1:
+            cmp(REGB, ReadNext());
+            break;
+        case 0xE2:
+            cmp(REGX, ReadNext());
+            break;
+        case 0xE3:
+            cmp(REGY, ReadNext());
+            break;
+
+            case 0xF0:
+
+                break;
 
         case 0xD0:
         case 0xD5:
@@ -491,9 +598,9 @@ void doInstruction(){
         case 0xDF:
             (*FLAGS) |= 0b00000001;
             break;
-
-
-
+        default:
+            printf("Invalid Opcode: %x", opcode);
+            return -1;
     }
 #pragma region Flag Check
     if(opcode >= 0x80 && opcode <= 0x83 || opcode >= 0x90 && opcode <= 0x93){
@@ -526,36 +633,27 @@ void doInstruction(){
             *FLAGS |= 0b00000010;
         }
     }
-    if(opcode >= 0x8C && opcode <= 0x8F || opcode >= 0x9C && opcode <= 0x9F){
-        if((*REGY) == 0) {
-            *FLAGS &= 0b11111101;
-            *FLAGS |= 0b00000001;
-
-        }else{
-            *FLAGS &= 0b11111110;
-            *FLAGS |= 0b00000010;
-        }
-    }
 #pragma endregion
-    
+return 0;
 }
 
-unsigned char ReadNext(){
+unsigned char* ReadNext(){
     if(PC > 0x8000){
-        return *mem.ROM[mpH][mpL][(PC - 0x8000)];
+        return mem.ROM[mpH][mpL][(PC - 0x8000)];
     }
     else{
-        return *mem.RAM[PC];
+        return mem.RAM[PC];
     }
 }
 
 unsigned char Read(unsigned short addr){
     if(addr > 0x8000){
-        return *mem.ROM[mpH][mpL][(addr - 0x8000)];
+        return (*mem.ROM)[mpH][mpL][(addr - 0x8000)];
     }
     else{
-        return *mem.RAM[PC];
+        return *(mem.RAM)[PC];
     }
+    return 0;
 }
 
 void readMemIncPC(){
@@ -606,10 +704,96 @@ void doReset(){
             0x06,
             0x07,
             0x08
-    }
+    };
 
     for(int i = 0; i < 8; i++){
         (*INSTR) = resetCode[i];
         doInstruction();
     }
+}
+
+void add(unsigned char* r1, unsigned char* r2){
+    unsigned char temp = *r1 + *r2;
+    if(temp == 0x00){
+        *FLAGS &= 0b11111101;
+        *FLAGS |= 0b00000001;
+    }
+    else{
+        *FLAGS &= 0b11111110;
+        *FLAGS |= 0b00000010;
+    }
+    *r1 = temp;
+
+}
+
+void sub(unsigned char* r1, unsigned char* r2){
+    unsigned short temp = *r1 - *r2;
+    if(temp == 0x00){
+        *FLAGS &= 0b11111101;
+        *FLAGS |= 0b00000001;
+    }
+    else{
+        *FLAGS &= 0b11111110;
+        *FLAGS |= 0b00000010;
+    }
+    *r1 = temp;
+}
+
+void nand(unsigned char* r1, unsigned char* r2){
+    unsigned char temp = ~(*r1 & *r2);
+    if(temp == 0x00){
+        *FLAGS &= 0b11111101;
+        *FLAGS |= 0b00000001;
+    }
+    else{
+        *FLAGS &= 0b11111110;
+        *FLAGS |= 0b00000010;
+    }
+    *r1 = temp;
+}
+
+void cmp(unsigned char* r1, unsigned char* r2){
+    unsigned char temp = *r1 - *r2;
+    if(temp == 0x00){
+        *FLAGS &= 0b11111101;
+        *FLAGS |= 0b00000001;
+    }
+    else{
+        *FLAGS &= 0b11111110;
+        *FLAGS |= 0b00000010;
+    }
+}
+
+void inc(unsigned char* r1){
+    unsigned char temp = *r1 + 1;
+    if(temp == 0x00){
+        *FLAGS &= 0b11111101;
+        *FLAGS |= 0b00000001;
+    }
+    else{
+        *FLAGS &= 0b11111110;
+        *FLAGS |= 0b00000010;
+    }
+    *r1 = temp;
+}
+
+void dec(unsigned char* r1){
+    unsigned char temp = *r1 - 1;
+    if(temp == 0x00){
+        *FLAGS &= 0b11111101;
+        *FLAGS |= 0b00000001;
+    }
+    else{
+        *FLAGS &= 0b11111110;
+        *FLAGS |= 0b00000010;
+    }
+    *r1 = temp;
+}
+
+void loadMem(unsigned char* r1, unsigned short addr){
+    r1 = Read(addr);
+}
+
+void loadImm(unsigned char* r1){
+    r1 = ReadNext();
 }
