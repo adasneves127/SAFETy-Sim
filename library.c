@@ -40,8 +40,9 @@
 #define FLAGS registers.F
 #define STCKPTR registers.SP
 #define INSTR registers.IR
-#define PROGCNTR registers.PC
+#define PCnt registers.PC
 #define STACKBASE 0x7F00
+
 
 #pragma endregion
 
@@ -68,7 +69,6 @@ struct Memory{
 
 
 struct Memory memory;
-unsigned short PC = 0x0000;
 
 struct Registers registers;
 struct Memory mem;
@@ -93,7 +93,7 @@ unsigned char* ReadNext();
 void push(unsigned char* val);
 void pop(unsigned char* val);
 void top(unsigned char* val);
-unsigned char Read(unsigned short addr);
+unsigned char* Read(unsigned short addr);
 void write(unsigned char* low, unsigned char* high, unsigned char* val);
 void add(unsigned char* r1, unsigned char* r2);
 void sub(unsigned char* r1, unsigned char* r2);
@@ -104,6 +104,11 @@ void dec(unsigned char* r1);
 void ROR(unsigned char* val);
 void ROL(unsigned char* val);
 void printDebug();
+void loadMem(unsigned char* r1, unsigned short addr);
+void loadImm(unsigned char* r1);
+void loadIdx(unsigned char* r1);
+void loadFull(unsigned char* r1);
+void checkVid();
 #pragma endregion
 
 #pragma region Main Function
@@ -125,8 +130,9 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    while(!halted && (PC <= 65535)) {
+    while(!halted && (*PCnt <= 65535)) {
         int res = doInstruction();
+        checkVid();
         if (debug) {
             printDebug();
         }
@@ -551,30 +557,6 @@ int doInstruction(){
         case 0xAF:
             nand(REGY, REGY);
             break;
-        case 0xB0:
-            push(REGA);
-            break;
-        case 0xB1:
-            push(REGB);
-            break;
-        case 0xB2:
-            push(REGX);
-            break;
-        case 0xB3:
-            push(REGY);
-            break;
-        case 0xC0:
-            write(REGA, ReadNext(), ReadNext());
-            break;
-        case 0xC1:
-            write(REGB, ReadNext(), ReadNext());
-            break;
-        case 0xC2:
-            write(REGX, ReadNext(), ReadNext());
-            break;
-        case 0xC3:
-            write(REGY, ReadNext(), ReadNext());
-            break;
         case 0xE0:
             cmp(REGA, ReadNext());
             break;
@@ -588,9 +570,48 @@ int doInstruction(){
             cmp(REGY, ReadNext());
             break;
 
-            case 0xF0:
+        case 0xF0:
+            loadMem(REGA, (*ReadNext()) | (*ReadNext()) << 8);
+            break;
+        case 0xF1:
+            loadImm(REGA);
+            break;
+        case 0xF2:
+            loadIdx(REGA);
+            break;
+        case 0xF3:
+            loadFull(REGA);
+            break;
+        case 0xF4:
+            loadMem(REGB, (*ReadNext()) | (*ReadNext()) << 8);
+            break;
+        case 0xF5:
+            loadImm(REGB);
+            break;
+        case 0xF6:
+            loadIdx(REGB);
+            break;
+        case 0xF7:
+            loadFull(REGB);
+            break;
+        case 0xF8:
+            loadMem(REGX, (*ReadNext()) | (*ReadNext()) << 8);
+            break;
+        case 0xF9:
+            loadImm(REGX);
+            break;
+        case 0xFC:
+            loadMem(REGY, (*ReadNext()) | (*ReadNext()) << 8);
+            break;
+        case 0xFD:
+            loadImm(REGY);
+            break;
+        case 0xFE:
+            loadIdx(REGY);
+            break;
 
-                break;
+
+
 
         case 0xD0:
         case 0xD5:
@@ -638,30 +659,29 @@ return 0;
 }
 
 unsigned char* ReadNext(){
-    if(PC > 0x8000){
-        return mem.ROM[mpH][mpL][(PC - 0x8000)];
+    if(*PCnt > 0x8000){
+        return mem.ROM[mpH][mpL][(*PCnt - 0x8000)];
     }
     else{
-        return mem.RAM[PC];
+        return mem.RAM[*PCnt];
     }
 }
 
-unsigned char Read(unsigned short addr){
+unsigned char* Read(unsigned short addr){
     if(addr > 0x8000){
-        return (*mem.ROM)[mpH][mpL][(addr - 0x8000)];
+        return (mem.ROM)[mpH][mpL][(addr - 0x8000)];
     }
     else{
-        return *(mem.RAM)[PC];
+        return (mem.RAM)[addr];
     }
-    return 0;
 }
 
 void readMemIncPC(){
-    if(PC > 0x8000){
-        registers.IR = mem.ROM[mpH][mpL][(PC - 0x8000)];
+    if(*PCnt > 0x8000){
+        registers.IR = mem.ROM[mpH][mpL][(*PCnt - 0x8000)];
     }
     else{
-        registers.IR = mem.RAM[PC];
+        registers.IR = mem.RAM[*PCnt];
     }
 
     registers.PC++;
@@ -682,6 +702,12 @@ void top(unsigned char* val){
 
 void write(unsigned char* low, unsigned char* high, unsigned char* val){
     unsigned short addr = *low | (*high << 8);
+    if(addr > 0x8000){
+        mem.ROM[mpH][mpL][(addr - 0x8000)] = val;
+    }
+    else{
+        mem.RAM[addr] = val;
+    }
 }
 
 void ROL(unsigned char* val){
@@ -796,4 +822,27 @@ void loadMem(unsigned char* r1, unsigned short addr){
 
 void loadImm(unsigned char* r1){
     r1 = ReadNext();
+}
+void loadIdx(unsigned char* r1){
+    loadMem(r1, 0xFFE0 + (*REGX));
+}
+void loadFull(unsigned char* r1){
+    loadMem(r1, *REGX << 8 | *REGY);
+}
+
+void writeABS(unsigned short addr, unsigned char* val){
+    if(addr > 0x8000){
+        mem.ROM[mpH][mpL][(addr - 0x8000)] = val;
+    }
+    else{
+        mem.RAM[addr] = val;
+    }
+}
+
+void checkVid(){
+    if(*Read(VID_OUT) != 0x00){
+        printf("%c", *Read(VID_OUT));
+        unsigned char* Zero = 0;
+        writeABS(VID_OUT, Zero);
+    }
 }
